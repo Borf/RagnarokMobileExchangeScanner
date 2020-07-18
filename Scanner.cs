@@ -1,0 +1,308 @@
+﻿using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Tesseract;
+
+namespace RomExchangeScanner
+{
+    partial class Scanner : IDisposable
+    {
+        private TesseractEngine engine;
+        private Dictionary<int, Image<Rgba32>> singleDigits = new Dictionary<int, Image<Rgba32>>();
+
+        public Scanner()
+        {
+            engine = new TesseractEngine(@"./data/tessdata", "eng", EngineMode.Default);
+
+            foreach (var file in Directory.GetFiles("data/amount"))
+                singleDigits[int.Parse(Path.GetFileNameWithoutExtension(file))] = Image.Load<Rgba32>(file);
+        }
+
+        public void Dispose()
+        {
+            engine.Dispose();
+            foreach (var img in singleDigits)
+                img.Value.Dispose();
+        }
+
+
+        private readonly Point[] SearchResultPositions = { 
+            new Point(772, 370), new Point(1132, 370),
+            new Point(772, 475), new Point(1132, 475),
+            new Point(772, 580), new Point(1132, 580),
+            new Point(772, 685), new Point(1132, 685),
+            new Point(772, 790), new Point(1132, 790),
+        };
+
+
+        private async Task ClickSearchButton(AndroidConnector android)
+        {
+            await android.Tap(300, 200);
+        }
+
+        private async Task CloseSearch(AndroidConnector android)
+        {
+            await android.Tap(1467, 187);
+        }
+
+        private async Task ClickSearchBox(AndroidConnector android)
+        {
+            await android.Tap(800, 270);
+        }
+        private async Task ClickSearchWindowSearchButton(AndroidConnector android)
+        {
+            await android.Tap(1400, 260);
+        }
+
+
+        private async Task ClickSearchWindowIndex(AndroidConnector android, int index)
+        {
+            await android.Tap(SearchResultPositions[index].X + 155, SearchResultPositions[index].Y + 44);
+        }
+
+        private async Task ClickShopItem(AndroidConnector android, int index)
+        {
+            //TODO: use index ;)
+            await android.Tap(827, 302);
+        }
+        private async Task ClickShopBuyButton(AndroidConnector android)
+        {
+            await android.Tap(1600, 984);
+        }
+        private async Task ClickShopCloseItem(AndroidConnector android)
+        {
+            await android.Tap(525, 900);
+        }
+
+
+        public ExchangeInfo ParseResultWindow(string fileName, ScanInfo scanInfo)
+        {
+            ExchangeInfo exchangeInfo = new ExchangeInfo()
+            {
+                Found = true,
+                ScanInfo = scanInfo
+            };
+
+            using (var image = Image.Load<Rgba32>(fileName))
+            {
+                image.Clone(ctx => ctx.Crop(new Rectangle(996, 159, 549, 66))).Save($"itemname.png");
+                string itemName = GetTextFromImage("itemname.png");
+                if(
+                    (!scanInfo.RealName.Contains("★") && itemName.ToLower() != scanInfo.RealName.ToLower()) ||
+                    ( scanInfo.RealName.Contains("★") && !itemName.Contains("*"))
+                    )
+                {
+                    scanInfo.Message = "Something is wrong, names do NOT match";
+                    return ExchangeInfo.BuildError(scanInfo);
+                }
+
+
+                string price = GetPrice(image);
+                string amount = GetAmount(image);
+
+
+
+                if(amount == "")
+                {
+                    scanInfo.Message = "Could not find the right amount";
+                    return ExchangeInfo.BuildError(scanInfo);
+                }
+
+
+                image.Clone(ctx => ctx.Crop(new Rectangle(989, 218, 557, 312))).Save($"snapping.png");
+                string snappingText = GetTextFromImage("snapping.png");
+                if (snappingText.ToLower().Contains("snapping"))
+                {
+                    snappingText = snappingText.Substring(24);
+                    snappingText = snappingText.Substring(0, snappingText.IndexOf("\n"));
+                    if (snappingText.Contains(" sec"))
+                        snappingText = snappingText.Substring(0, snappingText.IndexOf(" sec"));
+
+                    try
+                    {
+                        int minutes = int.Parse(snappingText.Substring(0, snappingText.IndexOf(" ")), CultureInfo.InvariantCulture);
+                        int seconds = int.Parse(snappingText.Substring(snappingText.LastIndexOf(" ")), CultureInfo.InvariantCulture);
+                        exchangeInfo.SnapTime = DateTime.Now.AddMinutes(minutes).AddSeconds(seconds);
+                    }
+                    catch (FormatException e)
+                    {
+                        Console.WriteLine("Unable to parse snapping time!");
+                    }
+
+                }
+
+
+
+                exchangeInfo.Found = true;
+                exchangeInfo.Price = int.Parse(price, CultureInfo.InvariantCulture);
+                exchangeInfo.Amount = int.Parse(amount, CultureInfo.InvariantCulture);
+            }
+            return exchangeInfo;
+        }
+
+        private string GetAmount(Image<Rgba32> image)
+        {
+            var amountImage = image.Clone(ctx => ctx.Crop(new Rectangle(725, 154, 203, 41)));
+            amountImage.Save($"amount.png");
+            string amount = GetTextFromImage($"amount.png");
+            //remove all junk that's not numbers
+            amount = amount
+                .Replace(",", "")
+                .Replace("'", "")
+                .Replace(".", "")
+                .Replace("\"", "")
+                .Replace(" ", "");
+            for (char c = 'a'; c <= 'z'; c++)
+                amount = amount.Replace(c + "", "");
+            for (char c = 'A'; c <= 'Z'; c++)
+                amount = amount.Replace(c + "", "");
+
+            if (amount == "")
+            {
+                foreach(var kv in singleDigits)
+                {
+                    if (IsSame(kv.Value, amountImage))
+                        amount = kv.Key + "";
+                }
+            }
+            if(amount == "")
+            {
+                try
+                {
+                    File.Copy("amount.png", $"unknown/unknown{Directory.GetFiles("unknown").Length}.png");
+                    File.Copy("shopresult.png", $"unknown/unknown{Directory.GetFiles("unknown").Length}.png");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
+            }
+            return amount;
+        }
+
+        private string GetPrice(Image<Rgba32> image)
+        {
+            image.Clone(ctx => ctx.Crop(new Rectangle(633, 671, 283, 67))).Save($"price.png");
+            string price = GetTextFromImage($"price.png");
+            price = price.Replace(",", "");
+            price = price.Replace(" ", "");
+            return price;
+        }
+
+        private bool IsSame(Image<Rgba32> image, Image<Rgba32> amountImage)
+        {
+            if (image.Width != amountImage.Width || image.Height != amountImage.Height)
+                return false;
+            for (int x = 0; x < image.Width; x++)
+            {
+                for(int y = 0; y < image.Height; y++)
+                {
+                    if (image[x, y] != amountImage[x, y])
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        private List<int> FindSearchResult(string imageName, ScanInfo info)
+        {
+            if (info.Override)
+                return new List<int>() { info.SearchIndex };
+
+            List<int> resultIds = new List<int>();
+
+            string itemName = info.RealName;
+            bool star = itemName.Contains("★");
+            if (star)
+                itemName = itemName.Substring(0, itemName.IndexOf("★"));
+
+            string matchItemName = itemName
+                .Replace(".", "")
+                .ToLower()
+                .Trim(new char[] { '\r', '\n', '\t', ' ', '.' });
+
+
+            List<string> results = new List<string>();
+            List<int> searchOrder = Enumerable.Range(0, SearchResultPositions.Length).ToList();
+            if (info != null && info.SearchIndex != -1)
+                searchOrder.Swap(0, info.SearchIndex);
+
+            using (var image = Image.Load(imageName))
+            {
+                foreach (int i in searchOrder)
+                {
+                    image.Clone(ctx => ctx.Crop(new Rectangle(SearchResultPositions[i].X, SearchResultPositions[i].Y, 313, 83))).Save($"item{i}.png");
+                    string result = GetTextFromImage($"item{i}.png");
+                    if (result == "")
+                        continue;
+                    results.Add(result);
+                    result = result
+                        .Replace(".", "")
+                        .ToLower()
+                        .Trim(new char[] { '\r', '\n', '\t', ' ', '.' });
+
+                    if (result.EndsWith(" bi") && info.RealName.ToLower().Contains("blueprint"))
+                        result = result.Substring(0, result.Length - 1) + "l";
+
+
+                    if (!star)
+                    {
+                        if (matchItemName.IndexOf(result) == 0)
+                            resultIds.Add(i);
+                    }
+                    else
+                    {
+                        if (matchItemName.IndexOf(result) == 0 && result != matchItemName + " card")
+                            resultIds.Add(i);
+                        else if ((matchItemName + " *card").IndexOf(result) == 0)
+                            resultIds.Add(i);
+                        else if ((matchItemName + "*card").IndexOf(result) == 0)
+                            resultIds.Add(i);
+                        else if ((matchItemName + " * card").IndexOf(result) == 0)
+                            resultIds.Add(i);
+                        else if ((matchItemName + "izcard").IndexOf(result) == 0)
+                            resultIds.Add(i);
+                        else if ((matchItemName + " iv").IndexOf(result) == 0)
+                            resultIds.Add(i);
+                    }
+
+                }
+            }
+
+            if(resultIds.Count == 0)
+                info.Message = $"Could not find item {itemName}, results were ({string.Join(", ", results)})";
+            return resultIds;
+        }
+
+        private string GetTextFromImage(string fileName)
+        {
+            try
+            {
+                using (var img = Pix.LoadFromFile(fileName))
+                {
+                    using (var page = engine.Process(img))
+                    {
+                         return page.GetText().Trim();
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Trace.TraceError(e.ToString());
+                Console.WriteLine("Unexpected Error: " + e.Message);
+                Console.WriteLine("Details: ");
+                Console.WriteLine(e.ToString());
+            }
+            return "";
+        }
+
+    }
+}
