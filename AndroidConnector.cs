@@ -41,5 +41,16 @@ namespace RomExchangeScanner
             await Process.Start("adb.exe", $"{Host} shell rm /sdcard/{fileName}").WaitForExitAsync();
         }
 
+        public async Task StopRo()
+        {
+            await Process.Start("adb.exe", $"{Host} shell am force-stop com.gravity.romEUg").WaitForExitAsync();
+        }
+
+        public async Task StartRo()
+        {
+            await Process.Start("adb.exe", $"{Host} shell monkey -p com.gravity.romEUg -c android.intent.category.LAUNCHER 1").WaitForExitAsync();
+        }
+
+
     }
 }

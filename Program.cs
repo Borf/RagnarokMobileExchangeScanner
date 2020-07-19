@@ -19,7 +19,7 @@ namespace RomExchangeScanner
 {
     class Program
     {
-        static string ApiEndPoint = "http://localhost;
+        static string ApiEndPoint = "http://localhost";
 
         static void Main(string[] args)
         {
@@ -29,9 +29,14 @@ namespace RomExchangeScanner
 
             AndroidConnector androidConnection = new AndroidConnector(hostname);
 
-
             using (Scanner scanner = new Scanner())
             {
+                if (!scanner.IsExchangeOpen(androidConnection).Result)
+                {
+                    scanner.RestartRo(androidConnection).Wait();
+                    scanner.OpenExchange(androidConnection, 0).Wait();
+                }
+
                 /*  Console.WriteLine(scanner.ScanRareItem(androidConnection, new ScanInfo()
                   {
                       RealName = "Archer Skeleton ★Card",
@@ -42,6 +47,7 @@ namespace RomExchangeScanner
 
 
                 int errorCount = 0;
+                int majorErrorcount = 0;
 
                 using (HttpClient client = new HttpClient())
                 {
@@ -100,6 +106,7 @@ namespace RomExchangeScanner
 
                                 response = client.SendAsync(request).Result;
                                 errorCount = 0;
+                                majorErrorcount = 0;
                             } else
                             {
                                 errorCount++;
@@ -113,9 +120,16 @@ namespace RomExchangeScanner
 
                         if(errorCount > 10)
                         {
-                            Console.WriteLine("Too many errors, stopping");
-
-                            break;
+                            if (majorErrorcount > 2)
+                            {
+                                Console.WriteLine("Too many errors, stopping app");
+                                break;
+                            }
+                            Console.WriteLine("Too many errors, restarting");
+                            scanner.RestartRo(androidConnection).Wait();
+                            scanner.OpenExchange(androidConnection, 0).Wait();
+                            majorErrorcount++;
+                            errorCount = 0;
                         }
 
 

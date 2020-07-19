@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using Tesseract;
@@ -41,6 +42,128 @@ namespace RomExchangeScanner
             new Point(772, 685), new Point(1132, 685),
             new Point(772, 790), new Point(1132, 790),
         };
+
+        public async Task RestartRo(AndroidConnector android)
+        {
+            Console.WriteLine("Stopping RO");
+            await android.StopRo();
+            await Task.Delay(1000);
+            Console.WriteLine("Starting RO");
+            await android.StartRo();
+            await Task.Delay(30000);
+
+            while (true)
+            {
+                await android.Screenshot("login.png");
+                using (var image = Image.Load<Rgba32>("login.png"))
+                    image.Clone(ctx => ctx.Crop(new Rectangle(855, 585, 215, 55))).Save($"servername.png");
+                string servername = GetTextFromImage("servername.png");
+                Console.WriteLine(servername);
+                if (servername.ToLower() == "eternal love")
+                    break;
+                await Task.Delay(5000);
+            }
+            Console.WriteLine("Tapping Login");
+            await android.Tap(500, 500);        //login tap
+            await Task.Delay(10000);
+
+            while (true)
+            {
+                await android.Screenshot("charselect.png");
+                using (var image = Image.Load<Rgba32>("charselect.png"))
+                using (var cmp = Image.Load<Rgba32>("data/startbutton.png"))
+                    if (IsSame(image.Clone(ctx => ctx.Crop(new Rectangle(1518, 943, 243, 67))), cmp))
+                        break;
+                await Task.Delay(2000);
+            }
+            Console.WriteLine("Selecting char");
+            await android.Tap(1624, 975);       //select char button
+            await Task.Delay(30000);
+            Console.WriteLine("Closing event popup");
+            await android.Tap(1400, 133);       //close event popup
+        }
+
+        public async Task OpenExchange(AndroidConnector android, int map)
+        {
+            await android.Tap(1800, 160);       //open minimap
+            await Task.Delay(500);
+            await android.Screenshot("minimap.png");
+            using (var image = Image.Load<Rgba32>("minimap.png"))
+                image.Clone(ctx => ctx.Crop(new Rectangle(1309, 175, 523, 60))).Save($"mapname.png");
+            string mapname = GetTextFromImage("mapname.png").ToLower();
+            await android.Tap(1325, 861);       //click world button
+            await Task.Delay(1500);
+
+            if (mapname == "prontera south gate")
+            {
+                await android.Tap(1100, 700);       //click map
+                await Task.Delay(1500);
+                await android.Tap(700, 665);       //click big cat man
+            }
+            else if (mapname == "prontera")
+            {
+                await android.Tap(1100, 600);       //click map
+                await Task.Delay(1500);
+                await android.Tap(700, 831);       //click big cat man
+            }
+            else if (mapname == "morroc")
+            {
+                await android.Tap(1000, 800);       //click map
+                await Task.Delay(1500);
+                await android.Tap(700, 782);       //click big cat man
+            }
+            else if (mapname == "geffen")
+            {
+                await android.Tap(900, 600);       //click map
+                await Task.Delay(1500);
+                await android.Tap(700, 718);       //click big cat man            }
+            }
+            else if (mapname == "payon")
+            {
+                await android.Tap(1300, 800);       //click map
+                await Task.Delay(1500);
+                await android.Tap(700, 716);       //click big cat man
+            }
+            else if (mapname == "izlude island")
+            {
+                await android.Tap(1200, 700);       //click map
+                await Task.Delay(1500);
+                await android.Tap(700, 495);       //click big cat man
+            }
+            else
+                Console.WriteLine("Player is at unknown map: " + mapname);
+
+
+                Console.WriteLine("Waiting for exchange popup to open");
+            await Task.Delay(1000);
+            //wait for buy button to appear
+            while (true)
+            {
+                await android.Screenshot("exchange.png");
+                using (var image = Image.Load<Rgba32>("exchange.png"))
+                using (var cmp = Image.Load<Rgba32>("data/exchange.png"))
+                    if (IsSame(image.Clone(ctx => ctx.Crop(new Rectangle(1525, 683, 329, 54))), cmp))
+                        break;
+                await Task.Delay(2000);
+            }
+            Console.WriteLine("Exchange opened, done");
+            await android.Tap(1660, 705);
+        }
+
+        public async Task<bool> IsExchangeOpen(AndroidConnector android)
+        {
+            await android.Screenshot("isExchangeOpen.png");
+            using (var image = Image.Load<Rgba32>("isExchangeOpen.png"))
+            {
+                using (var cmp = Image.Load<Rgba32>("data/search.png"))
+                    if (IsSame(image.Clone(ctx => ctx.Crop(new Rectangle(223, 200, 268, 63))), cmp))
+                        return true;
+                using (var cmp = Image.Load<Rgba32>("data/search2.png"))
+                    if (IsSame(image.Clone(ctx => ctx.Crop(new Rectangle(1356, 235, 117, 55))), cmp))
+                        return true;
+                return false;
+            }
+        }
 
 
         private async Task ClickSearchButton(AndroidConnector android)
