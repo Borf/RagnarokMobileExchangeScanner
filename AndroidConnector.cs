@@ -21,6 +21,11 @@ namespace RomExchangeScanner
             await Process.Start("adb.exe", $"{Host} shell input tap {x} {y}").WaitForExitAsync();
         }
 
+        public async Task Swipe(int x1, int y1, int x2, int y2, int duration = 500)
+        {
+            await Process.Start("adb.exe", $"{Host} shell input swipe {x1} {y1} {x2} {y2} {duration}").WaitForExitAsync();
+        }
+
         public async Task Text(string text)
         {
             text = text
@@ -43,6 +48,8 @@ namespace RomExchangeScanner
 
         public async Task StopRo()
         {
+            Process.Start("adb.exe", $"connect {Host.Substring(Host.IndexOf(" ")+1)}").WaitForExit();
+
             await Process.Start("adb.exe", $"{Host} shell am force-stop com.gravity.romEUg").WaitForExitAsync();
         }
 

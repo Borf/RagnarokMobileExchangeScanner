@@ -7,6 +7,8 @@
         public int SearchIndex { get; set; } = -1;
         public bool Override { get; set; } = false;
         public string Message { get; set; }
+        public int Slots { get; internal set; }
+        public bool Equip { get; internal set; }
 
         public override string ToString()
         {

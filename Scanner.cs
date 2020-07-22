@@ -43,6 +43,8 @@ namespace RomExchangeScanner
             new Point(772, 790), new Point(1132, 790),
         };
 
+
+
         public async Task RestartRo(AndroidConnector android)
         {
             Console.WriteLine("Stopping RO");
@@ -191,10 +193,9 @@ namespace RomExchangeScanner
             await android.Tap(SearchResultPositions[index].X + 155, SearchResultPositions[index].Y + 44);
         }
 
-        private async Task ClickShopItem(AndroidConnector android, int index)
+        private async Task ClickShopItem(AndroidConnector android, int index, int offsety = 0)
         {
-            //TODO: use index ;)
-            await android.Tap(827, 302);
+            await android.Tap(800 + (index % 2) * 600, offsety + 302 + 180 * (index/2));
         }
         private async Task ClickShopBuyButton(AndroidConnector android)
         {
@@ -206,7 +207,7 @@ namespace RomExchangeScanner
         }
 
 
-        public ExchangeInfo ParseResultWindow(string fileName, ScanInfo scanInfo)
+        public async Task<ExchangeInfo> ParseResultWindow(string fileName, ScanInfo scanInfo, AndroidConnector android)
         {
             ExchangeInfo exchangeInfo = new ExchangeInfo()
             {
@@ -227,19 +228,28 @@ namespace RomExchangeScanner
                     return ExchangeInfo.BuildError(scanInfo);
                 }
 
+                //scan price
+                string price = "";
+                if (scanInfo.Equip)
+                    price = GetPriceEquip(image);
+                else
+                    price = GetPrice(image);
+                exchangeInfo.Price = int.Parse(price, CultureInfo.InvariantCulture);
 
-                string price = GetPrice(image);
-                string amount = GetAmount(image);
-
-
-
-                if(amount == "")
+//scan amount, can only do this if it is not equipment
+                if (!scanInfo.Equip)
                 {
-                    scanInfo.Message = "Could not find the right amount";
-                    return ExchangeInfo.BuildError(scanInfo);
+                    string amount = GetAmount(image);
+                    if (amount == "")
+                    {
+                        scanInfo.Message = "Could not find the right amount";
+                        return ExchangeInfo.BuildError(scanInfo);
+                    }
+                    exchangeInfo.Amount = int.Parse(amount, CultureInfo.InvariantCulture);
                 }
 
 
+//scan if the item is snapping
                 image.Clone(ctx => ctx.Crop(new Rectangle(989, 218, 557, 312))).Save($"snapping.png");
                 string snappingText = GetTextFromImage("snapping.png");
                 if (snappingText.ToLower().Contains("snapping"))
@@ -261,12 +271,34 @@ namespace RomExchangeScanner
                     }
 
                 }
+//equip scanning
+                if(scanInfo.Equip)
+                {
+                    while (true)
+                    {
+                        using (var image2 = Image.Load<Rgba32>(fileName))
+                            image2.Clone(ctx => ctx.Crop(new Rectangle(383, 261, 553, 453))).Save($"enchant.png");
+                        string hasEnchant = GetTextFromImage("enchant.png");
+                        if (hasEnchant.ToLower().Contains("enchanted"))
+                        {
+                            Console.WriteLine(hasEnchant);
+                        }
+                        if (hasEnchant.ToLower().Contains("equipment upgrade"))
+                        {
+                            break;
+                        }
+                        await android.Swipe(555, 500, 555, 300, 500);
+                        await android.Tap(555, 500);
+                        await android.Screenshot(fileName);
+                    }
 
 
+
+
+
+                }
 
                 exchangeInfo.Found = true;
-                exchangeInfo.Price = int.Parse(price, CultureInfo.InvariantCulture);
-                exchangeInfo.Amount = int.Parse(amount, CultureInfo.InvariantCulture);
             }
             return exchangeInfo;
         }
@@ -319,6 +351,14 @@ namespace RomExchangeScanner
             price = price.Replace(" ", "");
             return price;
         }
+        private string GetPriceEquip(Image<Rgba32> image)
+        {
+            image.Clone(ctx => ctx.Crop(new Rectangle(632, 754, 261, 72))).Save($"price.png");
+            string price = GetTextFromImage($"price.png");
+            price = price.Replace(",", "");
+            price = price.Replace(" ", "");
+            return price;
+        }
 
         private bool IsSame(Image<Rgba32> image, Image<Rgba32> amountImage)
         {
@@ -326,13 +366,35 @@ namespace RomExchangeScanner
                 return false;
             for (int x = 0; x < image.Width; x++)
             {
-                for(int y = 0; y < image.Height; y++)
+                for (int y = 0; y < image.Height; y++)
                 {
                     if (image[x, y] != amountImage[x, y])
                         return false;
                 }
             }
             return true;
+        }
+        private int ImageDistance(Image<Rgba32> image, Image<Rgba32> amountImage)
+        {
+            int dist = 0;
+            for (int x = 1; x < image.Width-1; x++)
+            {
+                for (int y = 1; y < image.Height-1; y++)
+                {
+                    int localDist = 255;
+                    for (int xx = x-1; xx <= x+1; xx++)
+                    {
+                        for(int yy = y - 1; yy <= y+1; yy++)
+                        {
+                            localDist = Math.Min(localDist, Math.Abs(image[x, y].R - amountImage[xx, yy].R));
+                            localDist = Math.Min(localDist, Math.Abs(image[x, y].G - amountImage[xx, yy].G));
+                            localDist = Math.Min(localDist, Math.Abs(image[x, y].B - amountImage[xx, yy].B));
+                        }
+                    }
+                    dist = Math.Max(dist, localDist);
+                }
+            }
+            return dist;
         }
 
         private List<int> FindSearchResult(string imageName, ScanInfo info)

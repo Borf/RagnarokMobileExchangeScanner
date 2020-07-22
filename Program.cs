@@ -29,6 +29,28 @@ namespace RomExchangeScanner
 
             AndroidConnector androidConnection = new AndroidConnector(hostname);
 
+          /*  using (Scanner scanner = new Scanner())
+            {
+                ScanInfo scanInfo = new ScanInfo()
+                {
+                    RealName = "Luna Brooch",
+                    SearchName = "Luna Brooch",
+                    SearchIndex = 1,
+                    Override = true
+                };
+
+                Stopwatch sw = new Stopwatch();
+                sw.Start();
+                ExchangeInfo exchangeInfo = scanner.ScanEquip(androidConnection, scanInfo).Result;
+                sw.Stop();
+                Console.WriteLine($"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
+                Console.WriteLine(exchangeInfo);
+
+            }
+
+            return;*/
+
+
             using (Scanner scanner = new Scanner())
             {
                 if (!scanner.IsExchangeOpen(androidConnection).Result)

@@ -15,7 +15,6 @@ namespace RomExchangeScanner
     {
         public async Task<ExchangeInfo> ScanRareItem(AndroidConnector android, ScanInfo scanInfo)
         {
-
             Console.WriteLine("- Opening search window");
             await CloseSearch(android);
             await ClickSearchButton(android);
@@ -80,7 +79,7 @@ namespace RomExchangeScanner
                     await android.Screenshot("shopresult.png");
                     await ClickShopCloseItem(android);
 
-                    ExchangeInfo priceInfo = ParseResultWindow("shopresult.png", scanInfo);
+                    ExchangeInfo priceInfo = await ParseResultWindow("shopresult.png", scanInfo, android);
                     if (!priceInfo.Error || i + 1 >= indices.Count)
                     {
                         priceInfo.Error = false;

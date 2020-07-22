@@ -51,6 +51,9 @@
     <None Update="data\amount\9.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="data\equip_br\glove_1s.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="data\exchange.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
