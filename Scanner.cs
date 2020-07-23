@@ -221,9 +221,13 @@ namespace RomExchangeScanner
                 string itemName = GetTextFromImage("itemname.png");
                 if(
                     (!scanInfo.RealName.Contains("★") && itemName.ToLower() != scanInfo.RealName.ToLower()) ||
-                    ( scanInfo.RealName.Contains("★") && !itemName.Contains("*"))
+                    ( scanInfo.RealName.Contains("★") && !itemName.Contains("*") &&
+                    itemName.ToLower() != "andrei card" &&
+                    itemName.ToLower() != "zipper Beartcard")
                     )
                 {
+                    if(scanInfo.RealName.Contains("★"))
+                        Console.WriteLine("Star card not found");
                     scanInfo.Message = "Something is wrong, names do NOT match";
                     return ExchangeInfo.BuildError(scanInfo);
                 }

@@ -50,6 +50,25 @@ namespace RomExchangeScanner
 
             return;*/
 
+            /*using (Scanner scanner = new Scanner())
+            {
+                ScanInfo scanInfo = new ScanInfo()
+                {
+                    RealName = "Andre ★Card",
+                    SearchName = "andre",
+                    SearchIndex = 1,
+                    Override = true
+                };
+
+                Stopwatch sw = new Stopwatch();
+                sw.Start();
+                ExchangeInfo exchangeInfo = scanner.ScanRareItem(androidConnection, scanInfo).Result;
+                sw.Stop();
+                Console.WriteLine($"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
+                Console.WriteLine(exchangeInfo);
+
+            }
+            return;*/
 
             using (Scanner scanner = new Scanner())
             {
