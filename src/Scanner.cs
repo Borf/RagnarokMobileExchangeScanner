@@ -47,14 +47,16 @@ namespace RomExchangeScanner
 
         public async Task RestartRo(AndroidConnector android)
         {
-            Console.WriteLine("Stopping RO");
+            Program.status.SetSubStatus("Stopping RO");
             await android.StopRo();
             await Task.Delay(1000);
-            Console.WriteLine("Starting RO");
+            Program.status.SetSubStatus("Starting RO");
             await android.StartRo();
             await Task.Delay(30000);
 
-            while (true)
+            Program.status.SetSubStatus("Scanning if logged in");
+            //TODO: check for google/facebook popup
+            for(int i = 0; i < 25; i++)
             {
                 await android.Screenshot("login.png");
                 using (var image = Image.Load<Rgba32>("login.png"))
@@ -64,12 +66,17 @@ namespace RomExchangeScanner
                 if (servername.ToLower() == "eternal love")
                     break;
                 await Task.Delay(5000);
+                if (i == 24)
+                {
+                    Program.status.SetSubStatus("Unable to login");
+                    return;
+                }
             }
-            Console.WriteLine("Tapping Login");
+            Program.status.SetSubStatus("Tapping Login");
             await android.Tap(500, 500);        //login tap
             await Task.Delay(10000);
 
-            while (true)
+            for (int i = 0; i < 25; i++)
             {
                 await android.Screenshot("charselect.png");
                 using (var image = Image.Load<Rgba32>("charselect.png"))
@@ -77,11 +84,19 @@ namespace RomExchangeScanner
                     if (IsSame(image.Clone(ctx => ctx.Crop(new Rectangle(1518, 943, 243, 67))), cmp))
                         break;
                 await Task.Delay(2000);
+                if (i == 24)
+                {
+                    Program.status.SetSubStatus("Unable to select character");
+                    return;
+                }
             }
-            Console.WriteLine("Selecting char");
+            Program.status.SetSubStatus("Selecting char");
             await android.Tap(1624, 975);       //select char button
             await Task.Delay(30000);
-            Console.WriteLine("Closing event popup");
+            Program.status.SetSubStatus("Closing stupid ninja popup");
+            await android.Tap(1893, 50);       //
+            await Task.Delay(1000);
+            Program.status.SetSubStatus("Closing event popup");
             await android.Tap(1400, 133);       //close event popup
         }
 
@@ -130,13 +145,13 @@ namespace RomExchangeScanner
             {
                 await android.Tap(1200, 700);       //click map
                 await Task.Delay(1500);
-                await android.Tap(700, 495);       //click big cat man
+                await android.Tap(700, 432);        //click big cat man
             }
             else
-                Console.WriteLine("Player is at unknown map: " + mapname);
+                Program.status.SetSubStatus("Player is at unknown map: " + mapname);
 
 
-                Console.WriteLine("Waiting for exchange popup to open");
+            Program.status.SetSubStatus("Waiting for exchange popup to open");
             await Task.Delay(1000);
             //wait for buy button to appear
             while (true)
@@ -148,7 +163,7 @@ namespace RomExchangeScanner
                         break;
                 await Task.Delay(2000);
             }
-            Console.WriteLine("Exchange opened, done");
+            Program.status.SetSubStatus("Exchange opened, done");
             await android.Tap(1660, 705);
         }
 
@@ -158,10 +173,10 @@ namespace RomExchangeScanner
             using (var image = Image.Load<Rgba32>("isExchangeOpen.png"))
             {
                 using (var cmp = Image.Load<Rgba32>("data/search.png"))
-                    if (IsSame(image.Clone(ctx => ctx.Crop(new Rectangle(223, 200, 268, 63))), cmp))
+                    if (ImageDistance(image.Clone(ctx => ctx.Crop(new Rectangle(223, 200, 268, 63))), cmp) < 10)
                         return true;
                 using (var cmp = Image.Load<Rgba32>("data/search2.png"))
-                    if (IsSame(image.Clone(ctx => ctx.Crop(new Rectangle(1356, 235, 117, 55))), cmp))
+                    if (ImageDistance(image.Clone(ctx => ctx.Crop(new Rectangle(1356, 235, 117, 55))), cmp) < 10)
                         return true;
                 return false;
             }
@@ -207,9 +222,9 @@ namespace RomExchangeScanner
         }
 
 
-        public async Task<ExchangeInfo> ParseResultWindow(string fileName, ScanInfo scanInfo, AndroidConnector android)
+        public ScanResultItem ParseResultWindowRareItem(string fileName, ScanInfo scanInfo, AndroidConnector android)
         {
-            ExchangeInfo exchangeInfo = new ExchangeInfo()
+            ScanResultItem exchangeInfo = new ScanResultItem()
             {
                 Found = true,
                 ScanInfo = scanInfo
@@ -223,89 +238,177 @@ namespace RomExchangeScanner
                     (!scanInfo.RealName.Contains("★") && itemName.ToLower() != scanInfo.RealName.ToLower()) ||
                     ( scanInfo.RealName.Contains("★") && !itemName.Contains("*") &&
                     itemName.ToLower() != "andrei card" &&
-                    itemName.ToLower() != "zipper Beartcard")
+                    itemName.ToLower() != "zipper beartcard" &&
+                    itemName.ToLower() != "archer skeletontcard"
+)
                     )
                 {
                     if(scanInfo.RealName.Contains("★"))
                         Console.WriteLine("Star card not found");
                     scanInfo.Message = "Something is wrong, names do NOT match";
-                    return ExchangeInfo.BuildError(scanInfo);
+                    return ScanResult.BuildError<ScanResultItem>(scanInfo);
                 }
 
-                //scan price
-                string price = "";
-                if (scanInfo.Equip)
-                    price = GetPriceEquip(image);
-                else
-                    price = GetPrice(image);
-                exchangeInfo.Price = int.Parse(price, CultureInfo.InvariantCulture);
 
-//scan amount, can only do this if it is not equipment
-                if (!scanInfo.Equip)
+                exchangeInfo.Price = int.Parse(GetPrice(image), CultureInfo.InvariantCulture);
+
+                string amount = GetAmount(image);
+                if (amount == "")
                 {
-                    string amount = GetAmount(image);
-                    if (amount == "")
-                    {
-                        scanInfo.Message = "Could not find the right amount";
-                        return ExchangeInfo.BuildError(scanInfo);
-                    }
-                    exchangeInfo.Amount = int.Parse(amount, CultureInfo.InvariantCulture);
+                    scanInfo.Message = "Could not find the right amount";
+                    return ScanResult.BuildError<ScanResultItem>(scanInfo);
                 }
+                exchangeInfo.Amount = int.Parse(amount, CultureInfo.InvariantCulture);
+                exchangeInfo.SnapTime = GetSnapTime(image);
 
-
-//scan if the item is snapping
-                image.Clone(ctx => ctx.Crop(new Rectangle(989, 218, 557, 312))).Save($"snapping.png");
-                string snappingText = GetTextFromImage("snapping.png");
-                if (snappingText.ToLower().Contains("snapping"))
-                {
-                    snappingText = snappingText.Substring(24);
-                    snappingText = snappingText.Substring(0, snappingText.IndexOf("\n"));
-                    if (snappingText.Contains(" sec"))
-                        snappingText = snappingText.Substring(0, snappingText.IndexOf(" sec"));
-
-                    try
-                    {
-                        int minutes = int.Parse(snappingText.Substring(0, snappingText.IndexOf(" ")), CultureInfo.InvariantCulture);
-                        int seconds = int.Parse(snappingText.Substring(snappingText.LastIndexOf(" ")), CultureInfo.InvariantCulture);
-                        exchangeInfo.SnapTime = DateTime.Now.AddMinutes(minutes).AddSeconds(seconds);
-                    }
-                    catch (FormatException e)
-                    {
-                        Console.WriteLine("Unable to parse snapping time!");
-                    }
-
-                }
-//equip scanning
-                if(scanInfo.Equip)
-                {
-                    while (true)
-                    {
-                        using (var image2 = Image.Load<Rgba32>(fileName))
-                            image2.Clone(ctx => ctx.Crop(new Rectangle(383, 261, 553, 453))).Save($"enchant.png");
-                        string hasEnchant = GetTextFromImage("enchant.png");
-                        if (hasEnchant.ToLower().Contains("enchanted"))
-                        {
-                            Console.WriteLine(hasEnchant);
-                        }
-                        if (hasEnchant.ToLower().Contains("equipment upgrade"))
-                        {
-                            break;
-                        }
-                        await android.Swipe(555, 500, 555, 300, 500);
-                        await android.Tap(555, 500);
-                        await android.Screenshot(fileName);
-                    }
-
-
-
-
-
-                }
 
                 exchangeInfo.Found = true;
             }
             return exchangeInfo;
         }
+
+
+        public async Task<ScanResultEquip> ParseResultWindowEquip(string fileName, ScanInfo scanInfo, AndroidConnector android)
+        {
+            ScanResultEquip exchangeInfo = new ScanResultEquip()
+            {
+                Found = true,
+                ScanInfo = scanInfo
+            };
+
+            using (var image = Image.Load<Rgba32>(fileName))
+            {
+                image.Clone(ctx => ctx.Crop(new Rectangle(996, 159, 549, 66))).Save($"itemname.png");
+                string itemName = GetTextFromImage("itemname.png");
+                if (itemName.ToLower() != scanInfo.RealName.ToLower())
+                {
+                    scanInfo.Message = $"Something is wrong, names do NOT match. Expected {scanInfo.RealName.ToLower()} but got {itemName.ToLower()}";
+                    return ScanResult.BuildError<ScanResultEquip>(scanInfo);
+                }
+
+                exchangeInfo.Price = int.Parse(GetPriceEquip(image), CultureInfo.InvariantCulture);
+                exchangeInfo.SnapTime = GetSnapTime(image);
+
+                int i = 0;
+                //scan for multiple items
+                bool enchanted = false;
+                bool foundRefine = false;
+                while (true)
+                {
+                    using (var image2 = Image.Load<Rgba32>(fileName))
+                        image2.Clone(ctx => ctx.Crop(new Rectangle(383, 261, 553, 453))).Save($"enchant{i}.png");
+                    string hasEnchant = GetTextFromImage($"enchant{i}.png");
+                    Console.WriteLine($"- Text Read: \n\n{hasEnchant}\n\n");
+                    if (hasEnchant.ToLower().Contains("refine ") && !foundRefine && !enchanted && hasEnchant.ToLower().IndexOf("refine ") != hasEnchant.ToLower().IndexOf("refine +6 effective"))
+                    {
+                        string refine = hasEnchant.ToLower();
+                        refine = refine.Replace("\r\n", "\n");
+                        while (refine.Contains("\n\n"))
+                            refine = refine.Replace("\n\n", "\n");
+                        refine = refine.Substring(refine.IndexOf("\nrefine ") + 8).Trim();
+                        if(refine.IndexOf("\n") > 0)
+                            refine = refine.Substring(0, refine.IndexOf("\n")).Trim();
+                        Console.WriteLine(refine);
+                        int refineLevel = 0;
+                        if (refine.Contains("/"))
+                        {
+                            try
+                            {
+                                refineLevel = int.Parse(refine.Substring(0, refine.IndexOf("/")));
+                                foundRefine = true;
+                            }
+                            catch(FormatException e)
+                            {
+                                scanInfo.Message = "Something is wrong, error parsing refine level: " + refine;
+                                Console.WriteLine(e);
+                                return ScanResult.BuildError<ScanResultEquip>(scanInfo);
+                            }
+                        }
+                        if(refine.Contains("atk+"))
+                        {
+                            int atk = int.Parse(refine.Substring(refine.IndexOf("atk+") + 4));
+                            foundRefine = true;
+                            //TODO: check if atk matches refineLevel
+                        }
+                        exchangeInfo.RefinementLevel = refineLevel;
+                    }
+
+
+                    if (hasEnchant.ToLower().Contains("enchanted"))
+                    {
+                        enchanted = true;
+                    }
+                    if (hasEnchant.ToLower().Contains("equipment upgrade"))
+                    {
+                        if(enchanted)
+                        {
+                            MemoryStream ms = new MemoryStream();
+                            var jpegEncoder = new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 10 };
+                            using (var image2 = Image.Load<Rgba32>($"enchant{i}.png"))
+                                image2.Clone(ctx => ctx.Resize(new ResizeOptions { Size = image2.Size() / 2 })).SaveAsJpeg(ms, jpegEncoder);
+
+                            exchangeInfo.EnchantmentImage = System.Convert.ToBase64String(ms.GetBuffer());
+                            if (!hasEnchant.ToLower().Contains("enchanted"))
+                            {
+                                Console.WriteLine("Scrolled too far");
+                                exchangeInfo.Enchantments = new List<string>() { "scrolled too far" };
+                                break;
+                            }
+                            hasEnchant = hasEnchant.ToLower();
+                            hasEnchant = hasEnchant.Replace("\r\n", "\n");
+                            while(hasEnchant.Contains("\n\n"))
+                                hasEnchant = hasEnchant.Replace("\n\n", "\n");
+                            hasEnchant = hasEnchant.Substring(hasEnchant.IndexOf("enchanted attribute:") + 20).Trim();
+                            hasEnchant = hasEnchant.Substring(0, hasEnchant.IndexOf("equipment upgrade")).Trim();
+                            
+                            hasEnchant = hasEnchant.Replace("mapr ", "maxhp ");
+                            exchangeInfo.Enchantments = hasEnchant.Split("\n", 4).ToList();
+                        }
+                        break;
+                    }
+                    if (hasEnchant.ToLower().Contains("exchange price"))
+                    {
+                        Console.WriteLine("Scrolled wayyyyyy too far");
+                        break;
+                    }
+
+
+                    await android.Swipe(555, 500, 555, 300, 500);
+                    await Task.Delay(100);
+                    await android.Tap(1500, 960);
+                    await android.Screenshot(fileName);
+                    i++;
+                }
+                exchangeInfo.Found = true;
+            }
+            return exchangeInfo;
+        }
+
+        private DateTime? GetSnapTime(Image<Rgba32> image)
+        {
+            image.Clone(ctx => ctx.Crop(new Rectangle(989, 218, 557, 312))).Save($"snapping.png");
+            string snappingText = GetTextFromImage("snapping.png");
+            if (snappingText.ToLower().Contains("snapping"))
+            {
+                snappingText = snappingText.Substring(24);
+                snappingText = snappingText.Substring(0, snappingText.IndexOf("\n"));
+                if (snappingText.Contains(" sec"))
+                    snappingText = snappingText.Substring(0, snappingText.IndexOf(" sec"));
+
+                try
+                {
+                    int minutes = int.Parse(snappingText.Substring(0, snappingText.IndexOf(" ")), CultureInfo.InvariantCulture);
+                    int seconds = int.Parse(snappingText.Substring(snappingText.LastIndexOf(" ")), CultureInfo.InvariantCulture);
+                    return DateTime.Now.AddMinutes(minutes).AddSeconds(seconds);
+                }
+                catch (FormatException e)
+                {
+                    Console.WriteLine("Unable to parse snapping time!");
+                }
+            }
+            return null;
+        }
+
 
         private string GetAmount(Image<Rgba32> image)
         {
@@ -360,6 +463,7 @@ namespace RomExchangeScanner
             image.Clone(ctx => ctx.Crop(new Rectangle(632, 754, 261, 72))).Save($"price.png");
             string price = GetTextFromImage($"price.png");
             price = price.Replace(",", "");
+            price = price.Replace(".", "");
             price = price.Replace(" ", "");
             return price;
         }

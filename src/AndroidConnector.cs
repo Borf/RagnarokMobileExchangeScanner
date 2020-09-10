@@ -11,7 +11,12 @@ namespace RomExchangeScanner
         private string Host;
         public AndroidConnector(string host)
         {
-            Process.Start("adb.exe", $"connect {host}").WaitForExit();
+            Process.Start(new ProcessStartInfo()
+            {
+                FileName = "adb.exe", 
+                Arguments = $"connect {host}",
+                RedirectStandardOutput = true
+            }).WaitForExit();
             Host = "-s " + host;
         }
 
@@ -48,14 +53,23 @@ namespace RomExchangeScanner
 
         public async Task StopRo()
         {
-            Process.Start("adb.exe", $"connect {Host.Substring(Host.IndexOf(" ")+1)}").WaitForExit();
-
+            await Process.Start(new ProcessStartInfo()
+            {
+                FileName = "adb.exe",
+                Arguments = $"connect {Host.Substring(Host.IndexOf(" ") + 1)}",
+                RedirectStandardOutput = true
+            }).WaitForExitAsync();
             await Process.Start("adb.exe", $"{Host} shell am force-stop com.gravity.romEUg").WaitForExitAsync();
         }
 
         public async Task StartRo()
         {
-            await Process.Start("adb.exe", $"{Host} shell monkey -p com.gravity.romEUg -c android.intent.category.LAUNCHER 1").WaitForExitAsync();
+            await Process.Start(new ProcessStartInfo()
+            {
+                FileName = "adb.exe",
+                Arguments = $"{Host} shell monkey -p com.gravity.romEUg -c android.intent.category.LAUNCHER 1",
+                RedirectStandardOutput = true
+            }).WaitForExitAsync();
         }
 
 

@@ -14,8 +14,10 @@ namespace RomExchangeScanner
 {
     partial class Scanner
     {
-        public async Task<ExchangeInfo> ScanEquip(AndroidConnector android, ScanInfo scanInfo)
+        public async Task<List<ScanResultEquip>> ScanEquip(AndroidConnector android, ScanInfo scanInfo)
         {
+            List<ScanResultEquip> result = new List<ScanResultEquip>();
+
 
             if (scanInfo.RealName.Contains("[1]"))
                 scanInfo.Slots = 1;
@@ -23,10 +25,10 @@ namespace RomExchangeScanner
                 scanInfo.Slots = 2;
 
             if (scanInfo.SearchName.Contains("["))
-                scanInfo.SearchName = scanInfo.SearchName.Substring(0, scanInfo.SearchName.IndexOf("["));
+                scanInfo.SearchName = scanInfo.SearchName.Substring(0, scanInfo.SearchName.IndexOf("[")).Trim();
             scanInfo.Equip = true;
 
-            Console.WriteLine("- Opening search window");
+            Program.status.SetSubStatus("Opening search window");
             await CloseSearch(android);
             await ClickSearchButton(android);
             await ClickSearchBox(android);
@@ -35,20 +37,21 @@ namespace RomExchangeScanner
             await ClickSearchWindowSearchButton(android); //to close text input
             await ClickSearchWindowSearchButton(android);
 
-            Console.WriteLine("- Scanning search result");
+            Program.status.SetSubStatus("Scanning search result");
             await android.Screenshot("searchresult.png");
             List<int> indices = FindSearchResult("searchresult.png", scanInfo);
+            await Task.Delay(500);
             if (indices.Count == 0)
             {
                 //TODO: do something with item0.png - item9.png
-                Console.WriteLine("- Error, could not find item");
+                Program.status.SetSubStatus("- Error, could not find item");
                 await CloseSearch(android);
-                return ExchangeInfo.BuildError(scanInfo);
+                return new List<ScanResultEquip>() { ScanResult.BuildError<ScanResultEquip>(scanInfo) };
             }
             if (indices[0] != scanInfo.SearchIndex)
             {
                 if (scanInfo.SearchIndex != -1)
-                    Console.WriteLine("- Warning, search index not correct");
+                    Program.log.Log(scanInfo.RealName, "Warning, search index not correct");
                 scanInfo.SearchIndex = indices[0];
             }
 
@@ -56,9 +59,9 @@ namespace RomExchangeScanner
             for (int i = 0; i < indices.Count; i++)
             {
                 await ClickSearchWindowIndex(android, indices[i]);
-                await Task.Delay(1500); 
+                await Task.Delay(2500);
 
-                Console.WriteLine("- Checking if any items are on sale");
+                Program.status.SetSubStatus("Checking if any items are on sale");
                 await android.Screenshot("shopitems.png");
                 using (var image = Image.Load<Rgba32>("shopitems.png"))
                     image.Clone(ctx => ctx.Crop(new Rectangle(975, 505, 368, 64))).Save($"nosale.png");
@@ -67,13 +70,13 @@ namespace RomExchangeScanner
                 if (GetTextFromImage("nosale.png").ToLower().Contains("currently"))
                 {
                     onSale = false;
-                    Console.WriteLine("- No items currently on sale");
+                    Program.log.Log(scanInfo.RealName, "Currently not for sale");
                     if (i + 1 >= indices.Count)
-                        return new ExchangeInfo()
+                        return new List<ScanResultEquip>() { new ScanResultEquip()
                         {
                             Found = false,
                             ScanInfo = scanInfo
-                        };
+                        } };
                 }
 
                 if (onSale)
@@ -82,11 +85,12 @@ namespace RomExchangeScanner
                     int subPage = 0;
                     while(true)
                     {
+                        Program.log.Log(scanInfo.RealName, "Scanning page " + subPage);
                         int foundResults = images.Count;
-                        bool done = await ScanPage(images, android, scanInfo);
+                        bool done = await ScanPage(images, android, scanInfo, result);
                         if(foundResults == images.Count)
                         {
-                            Console.WriteLine("- No new items found");
+                            Program.log.Log(scanInfo.RealName, "No new items found in last sweep, done");
                             break;
                         }
                         if (subPage % 2 == 0)
@@ -98,16 +102,15 @@ namespace RomExchangeScanner
                         await android.Screenshot("shopitems.png");
                         subPage++;
                     }
-                    Console.WriteLine("- No new page, done scanning");
+                    Program.status.SetSubStatus("done scanning");
 
                     foreach (var img in images)
                         img.Dispose();
 
 
-                    return new ExchangeInfo();
+                    return result;
 
                 }
-
                 //this should not happen
                 scanInfo.Message = "";
                 Console.WriteLine("Item does not match, or not found on exchange with multiple items, trying to rescan it");
@@ -118,8 +121,6 @@ namespace RomExchangeScanner
                 await android.Text(scanInfo.SearchName);
                 await ClickSearchWindowSearchButton(android); //to close text input
                 await ClickSearchWindowSearchButton(android);
-
-
             }
 
             return null;
@@ -173,25 +174,41 @@ namespace RomExchangeScanner
         }
 
 
-        private async Task<bool> ScanPage(List<Image<Rgba32>> images, AndroidConnector android, ScanInfo scanInfo)
+        private async Task<bool> ScanPage(List<Image<Rgba32>> images, AndroidConnector android, ScanInfo scanInfo, List<ScanResultEquip> result)
         {
+            string codename = scanInfo.RealName.ToLower();
+            codename = codename.Replace(" ", "_");
+            codename = codename.Replace("[1]", "1s");
+            codename = codename.Replace("[2]", "2s");
+
+
             using (var image = Image.Load<Rgba32>("shopitems.png"))
             {
                 //first, look for the top blue line of the item box (RGB(171, 210, 243) if not scrolled half a pixel)
                 int starty = FindFirstResult(image);
-                Console.WriteLine($"Item list starting at {starty}");
+                Program.log.Log(scanInfo.RealName, $"Item list starting at {starty}");
+                await ClickShopItem(android, 0, starty - 230);
 
                 //go through all 8 pictures
                 for (int ii = 0; ii < 8; ii++)
                 {
+                    int newstarty = FindFirstResult(image);
+                    if(newstarty != starty)
+                    {
+                        Program.log.Log(scanInfo.RealName, $"Scrolled a bit, adjusting");
+                        starty = newstarty;
+                    }
                     if (starty + 180 * (ii / 2) + 132 > 902)
                         continue;
                     
                     //make a capture of the item, so we don't scan items twice
                     var subImage = image.Clone(ctx => ctx.Crop(new Rectangle(595 + 600 * (ii % 2), starty + 180 * (ii / 2), 400, 132)));
 
-                    if(TestIfScanned(subImage, images))
+                    if (TestIfScanned(subImage, images))
+                    {
+                        Program.log.Log(scanInfo.RealName, $"Item {ii} already scanned, skipping");
                         continue;
+                    }
                     images.Add(subImage);
                     subImage.Save($"unknown/unknown{Directory.GetFiles("unknown").Length}.png");
 
@@ -200,32 +217,44 @@ namespace RomExchangeScanner
 
                     //check if item has multiple on sale. If it does, we don't have to scan it because it won't have an enchantment
                     var rect = new Rectangle(694 + 600 * (ii % 2), starty + 103 + 180 * (ii / 2), 33, 28);
-                    //image.Clone(ctx => ctx.Crop(rect)).Save($"unknown/unknown{Directory.GetFiles("unknown").Length}.png");
-                    using (var noamount = Image.Load<Rgba32>("data/equip_br/glove_1s.png"))
+                    using (var amountImage = image.Clone(ctx => ctx.Crop(rect)))
                     {
-                        int dist = ImageDistance(image.Clone(ctx => ctx.Crop(rect)), noamount);
-                        if (dist > 100)
+
+                        //image.Clone(ctx => ctx.Crop(rect)).Save($"unknown/unknown{Directory.GetFiles("unknown").Length}.png");
+                        if (!File.Exists($"data/equip_br/{codename}.png"))
                         {
-                            Console.WriteLine($"- Item {ii} has an amount, not scanning!");
-                            continue;
+                            if (!Directory.Exists($"data/equip_br/{codename}"))
+                                Directory.CreateDirectory($"data/equip_br/{codename}");
+                            amountImage.Save($"data/equip_br/{codename}/{Directory.GetFiles($"data/equip_br/{codename}/").Length}.png");
+                        }
+                        else using (var noamount = Image.Load<Rgba32>($"data/equip_br/{codename}.png"))
+                        {
+                            int dist = ImageDistance(amountImage, noamount);
+                            if (dist > 100)
+                            {
+                                Program.log.Log(scanInfo.RealName, $"Item {ii} has an amount, not scanning. Distance {dist}");
+                                    Console.WriteLine($"- Item {ii} has an amount, not scanning! Distance {dist}");
+                                continue;
+                            }
                         }
                     }
 
                     //scan item for price and enchantments
+                    await Task.Delay(100);
                     Console.WriteLine($"- Scanning item {ii}");
                     await ClickShopBuyButton(android);
-                    await Task.Delay(500); // the UI needs some time to load the card
+                    await Task.Delay(1000);
                     Console.WriteLine("- Scanning item");
                     await android.Screenshot("shopresult.png");
-                    ExchangeInfo priceInfo = await ParseResultWindow("shopresult.png", scanInfo, android);
+                    ScanResultEquip priceInfo = await ParseResultWindowEquip("shopresult.png", scanInfo, android);
+                    result.Add(priceInfo);
+                    await Task.Delay(100);
                     await ClickShopCloseItem(android);
                     if(priceInfo.Error) //if error, last one is found
                     {
                         return true;
                     }
                 }
-
-
             }
             return false;
         }

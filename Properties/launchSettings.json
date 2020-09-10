@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "RagnarokMobileExchangeScanner": {
+      "commandName": "Project",
+      "remoteDebugEnabled": false,
+      "remoteDebugMachine": "10.10.0.32",
+      "authenticationMode": "Windows"
+    }
+  }
+}
