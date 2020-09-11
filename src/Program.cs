@@ -21,7 +21,7 @@ using Tesseract;
 
 namespace RomExchangeScanner
 {
-    class Program
+    public class Program
     {
         static string ApiEndPoint = "http://zenybus.borf.nl";
 
@@ -67,64 +67,39 @@ namespace RomExchangeScanner
                 Task.Run(RunScanner);
                 Application.Run();
             }
-
-            return;
-
-          /*  using (Scanner scanner = new Scanner())
-            {
-                ScanInfo scanInfo = new ScanInfo()
-                {
-                    RealName = "Gakkung Bow [1]",
-                    SearchName = "Gakkung Bow",
-                    SearchIndex = 0,
-                    Override = true
-                };
-
-                Stopwatch sw = new Stopwatch();
-                sw.Start();
-                List<ScanResultEquip> exchangeInfo = scanner.ScanEquip(androidConnection, scanInfo).Result;
-                sw.Stop();
-                Console.WriteLine($"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
-
-                Console.WriteLine(JsonSerializer.Serialize(new
-                {
-                    id = 1,
-                    items = exchangeInfo
-                }));
-
-            }
-
-            return;*/
-
-            /*using (Scanner scanner = new Scanner())
-            {
-                ScanInfo scanInfo = new ScanInfo()
-                {
-                    RealName = "Archer Skeleton ★Card",
-                    SearchName = "Archer Skeleton",
-                    SearchIndex = 0,
-                    Override = false
-                };
-
-                Stopwatch sw = new Stopwatch();
-                sw.Start();
-                ExchangeInfo exchangeInfo = scanner.ScanRareItem(androidConnection, scanInfo).Result;
-                sw.Stop();
-                Console.WriteLine($"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
-                Console.WriteLine(exchangeInfo);
-
-            }
-            return;*/
         }
 
         public static void Invoke(Action action)
         {
+            Debug.WriteLine("Invoking....");
             Application.MainLoop.Invoke(action);
         }
 
+
+        public enum Status
+        {
+            Idle,
+            Equip,
+            Rare,
+            Single
+        }
+
+        public static Status _CurrentStatus = Status.Idle;
+        public static Status CurrentStatus { get { return _CurrentStatus; } set
+                {
+                    _CurrentStatus = value;
+                controls.SetStatus(value);
+                } 
+        }
+
+        public static bool CancelScan = false;
+        public static bool Restart = false;
+
+
+
         private async static void RunScanner()
         {
-            status.SetStatus("Starting up", "Checking if exchange is open");
+            status.SetStatus("Starting up", "Checking if in exchange");
             if (!await scanner.IsExchangeOpen(androidConnection))
             {
                 status.SetStatus("Restarting RO", "");
@@ -132,6 +107,7 @@ namespace RomExchangeScanner
                 status.SetStatus("Opening Exchange", "");
                 await scanner.OpenExchange(androidConnection, 0);
             }
+            status.SetStatus("Starting up", "Started up");
 
 
             int errorCount = 0;
@@ -141,8 +117,32 @@ namespace RomExchangeScanner
             {
                 while (true)
                 {
+                    CancelScan = false;
+
+                    if(Restart)
+                    {
+                        status.SetStatus("Restarting RO", "");
+                        await scanner.RestartRo(androidConnection);
+                        status.SetStatus("Opening Exchange", "");
+                        await scanner.OpenExchange(androidConnection, 0);
+                        Restart = false;
+                    }
+
+
+                    if (CurrentStatus == Status.Idle)
+                    {
+                        status.SetStatus("Idle", "");
+                        await Task.Delay(1000);
+                        continue;
+                    }
+
                     Program.status.SetStatus("Finding new item to scan","");
-                    var request = new HttpRequestMessage(HttpMethod.Get, $"{ApiEndPoint}/api/scanner/nextscanequip");
+                    HttpRequestMessage request;
+                    if(CurrentStatus == Status.Equip)
+                        request = new HttpRequestMessage(HttpMethod.Get, $"{ApiEndPoint}/api/scanner/nextscanequip");
+                    else
+                        request = new HttpRequestMessage(HttpMethod.Get, $"{ApiEndPoint}/api/scanner/nextscanitem");
+
                     request.Headers.Add("Accept", "application/json");
                     request.Headers.Add("User-Agent", "BorfRoScanner");
                     var response = client.SendAsync(request).Result;
@@ -172,16 +172,15 @@ namespace RomExchangeScanner
                                 scanInfo.SearchName = scanInfo.SearchName.Substring(0, scanInfo.SearchName.IndexOf("["));
                         }
 
-
                         if (data.type.ToLower().StartsWith("equipment"))
                         {
                             Stopwatch sw = new Stopwatch();
                             sw.Start();
                             List<ScanResultEquip> exchangeInfo = await scanner.ScanEquip(androidConnection, scanInfo);
                             sw.Stop();
-                            Console.WriteLine($"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
+                            log.Log(scanInfo.RealName, $"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
                             bool error = exchangeInfo.Any(e => e.Error);
-
+                            status.SetStatus("Done Scanning", "Posting results");
                             request = new HttpRequestMessage(HttpMethod.Post, $"{ApiEndPoint}/api/scanner/result");
                             request.Headers.Add("Accept", "application/json");
                             request.Headers.Add("User-Agent", "BorfRoScanner");
@@ -206,7 +205,7 @@ namespace RomExchangeScanner
                             sw.Start();
                             ScanResultItem exchangeInfo = await scanner.ScanRareItem(androidConnection, scanInfo);
                             sw.Stop();
-                            Console.WriteLine($"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
+                            log.Log(scanInfo.RealName, $"Found Item in {sw.Elapsed.TotalSeconds} seconds\n{exchangeInfo}\n");
                             request = new HttpRequestMessage(HttpMethod.Post, $"{ApiEndPoint}/api/scanner/result");
                             request.Headers.Add("Accept", "application/json");
                             request.Headers.Add("User-Agent", "BorfRoScanner");
@@ -241,14 +240,16 @@ namespace RomExchangeScanner
                     {
                         if (majorErrorcount > 2)
                         {
-                            Console.WriteLine("Too many errors, stopping app");
-                            break;
+                            CurrentStatus = Status.Idle;
                         }
-                        Console.WriteLine("Too many errors, restarting");
-                        scanner.RestartRo(androidConnection).Wait();
-                        scanner.OpenExchange(androidConnection, 0).Wait();
-                        majorErrorcount++;
-                        errorCount = 0;
+                        else
+                        {
+                            Console.WriteLine("Too many errors, restarting game");
+                            scanner.RestartRo(androidConnection).Wait();
+                            scanner.OpenExchange(androidConnection, 0).Wait();
+                            majorErrorcount++;
+                            errorCount = 0;
+                        }
                     }
 
 

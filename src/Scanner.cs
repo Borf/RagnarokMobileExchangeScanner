@@ -151,7 +151,7 @@ namespace RomExchangeScanner
                 Program.status.SetSubStatus("Player is at unknown map: " + mapname);
 
 
-            Program.status.SetSubStatus("Waiting for exchange popup to open");
+            Program.status.SetSubStatus("Waiting for exchange popup");
             await Task.Delay(1000);
             //wait for buy button to appear
             while (true)
@@ -293,7 +293,7 @@ namespace RomExchangeScanner
                 //scan for multiple items
                 bool enchanted = false;
                 bool foundRefine = false;
-                while (true)
+                while (!Program.CancelScan)
                 {
                     using (var image2 = Image.Load<Rgba32>(fileName))
                         image2.Clone(ctx => ctx.Crop(new Rectangle(383, 261, 553, 453))).Save($"enchant{i}.png");

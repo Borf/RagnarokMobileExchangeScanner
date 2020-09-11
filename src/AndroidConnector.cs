@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace RomExchangeScanner
 {
-    class AndroidConnector
+    public class AndroidConnector
     {
         private string Host;
         public AndroidConnector(string host)

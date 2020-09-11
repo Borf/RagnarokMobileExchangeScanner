@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace RomExchangeScanner
 {
-    partial class Scanner
+    public partial class Scanner
     {
         public async Task<List<ScanResultEquip>> ScanEquip(AndroidConnector android, ScanInfo scanInfo)
         {
@@ -39,6 +39,16 @@ namespace RomExchangeScanner
 
             Program.status.SetSubStatus("Scanning search result");
             await android.Screenshot("searchresult.png");
+
+            using (var image = Image.Load<Rgba32>("searchresult.png"))
+            using (var cmp = Image.Load<Rgba32>("data/bigerror.png"))
+                if(ImageDistance(image.Clone(c => c.Crop(new Rectangle(650, 150, 700, 200))), cmp) < 100)
+                {
+                    Program.Restart = true;
+                    return null;
+                }
+
+
             List<int> indices = FindSearchResult("searchresult.png", scanInfo);
             await Task.Delay(500);
             if (indices.Count == 0)
@@ -61,7 +71,7 @@ namespace RomExchangeScanner
                 await ClickSearchWindowIndex(android, indices[i]);
                 await Task.Delay(2500);
 
-                Program.status.SetSubStatus("Checking if any items are on sale");
+                Program.status.SetSubStatus("Checking for sales");
                 await android.Screenshot("shopitems.png");
                 using (var image = Image.Load<Rgba32>("shopitems.png"))
                     image.Clone(ctx => ctx.Crop(new Rectangle(975, 505, 368, 64))).Save($"nosale.png");
@@ -83,7 +93,7 @@ namespace RomExchangeScanner
                 {
                     var images = new List<Image<Rgba32>>();
                     int subPage = 0;
-                    while(true)
+                    while(!Program.CancelScan)
                     {
                         Program.log.Log(scanInfo.RealName, "Scanning page " + subPage);
                         int foundResults = images.Count;

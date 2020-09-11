@@ -9,7 +9,6 @@ namespace RomExchangeScanner.src.Windows
     public class LogWindow : Window
     {
         ListView items;
-        ScrollView scrollView;
         TextView logView;
 
         Dictionary<string, string> logMessages = new Dictionary<string, string>();
