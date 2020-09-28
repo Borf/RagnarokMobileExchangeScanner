@@ -98,6 +98,7 @@ namespace RomExchangeScanner
             await Task.Delay(1000);
             Program.status.SetSubStatus("Closing event popup");
             await android.Tap(1400, 133);       //close event popup
+            await android.Tap(1495, 111);       //close anotherpopup
         }
 
         public async Task OpenExchange(AndroidConnector android, int map)

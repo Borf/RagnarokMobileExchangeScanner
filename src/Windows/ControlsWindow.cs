@@ -31,12 +31,10 @@ namespace RomExchangeScanner.src.Windows
             btnSkipItem.Clicked = () => { Program.CancelScan = true; };
             btnRestartClient.Clicked = async () =>
             {
+                Program.status.SetStatus("Initializing restart", "");
                 Program.CancelScan = true;
+                Program.Restart = true;
                 await Task.Delay(5000);
-                Program.status.SetStatus("Restarting RO", "");
-                await Program.scanner.RestartRo(Program.androidConnection);
-                Program.status.SetStatus("Opening Exchange", "");
-                await Program.scanner.OpenExchange(Program.androidConnection, 0);
             };
 
             statusGroup.SelectionChanged += OnStatusChange;

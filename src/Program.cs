@@ -72,7 +72,8 @@ namespace RomExchangeScanner
         public static void Invoke(Action action)
         {
             Debug.WriteLine("Invoking....");
-            Application.MainLoop.Invoke(action);
+            //Application.MainLoop.Invoke(action);
+            action.Invoke();
         }
 
 
@@ -81,7 +82,8 @@ namespace RomExchangeScanner
             Idle,
             Equip,
             Rare,
-            Single
+            Single,
+            Restarting
         }
 
         public static Status _CurrentStatus = Status.Idle;
@@ -99,15 +101,15 @@ namespace RomExchangeScanner
 
         private async static void RunScanner()
         {
-            status.SetStatus("Starting up", "Checking if in exchange");
-            if (!await scanner.IsExchangeOpen(androidConnection))
-            {
-                status.SetStatus("Restarting RO", "");
-                await scanner.RestartRo(androidConnection);
-                status.SetStatus("Opening Exchange", "");
-                await scanner.OpenExchange(androidConnection, 0);
-            }
-            status.SetStatus("Starting up", "Started up");
+            //status.SetStatus("Starting up", "Checking if in exchange");
+            //if (!await scanner.IsExchangeOpen(androidConnection))
+            //{
+            //    status.SetStatus("Restarting RO", "");
+            //    await scanner.RestartRo(androidConnection);
+            //    status.SetStatus("Opening Exchange", "");
+            //    await scanner.OpenExchange(androidConnection, 0);
+            //}
+            //status.SetStatus("Starting up", "Started up");
 
 
             int errorCount = 0;
@@ -121,11 +123,13 @@ namespace RomExchangeScanner
 
                     if(Restart)
                     {
+                        CurrentStatus = Status.Restarting;
                         status.SetStatus("Restarting RO", "");
                         await scanner.RestartRo(androidConnection);
                         status.SetStatus("Opening Exchange", "");
                         await scanner.OpenExchange(androidConnection, 0);
                         Restart = false;
+                        CurrentStatus = Status.Idle;
                     }
 
 
