@@ -115,6 +115,19 @@ namespace RomExchangeScanner
             int errorCount = 0;
             int majorErrorcount = 0;
 
+            {
+                ScanInfo scanInfo = new ScanInfo()
+                {
+                    RealName = "Clip",
+                    SearchName = "Clip",
+                    SearchIndex = -1,
+                    Override = false
+                }; 
+                
+                List<ScanResultEquip> exchangeInfo = await scanner.ScanEquip(androidConnection, scanInfo);
+            }
+
+
             using (HttpClient client = new HttpClient())
             {
                 while (true)
@@ -140,13 +153,14 @@ namespace RomExchangeScanner
                         continue;
                     }
 
-                    Program.status.SetStatus("Finding new item to scan","");
+                    Program.status.SetStatus("Finding new item to scan", "");
                     HttpRequestMessage request;
-                    if(CurrentStatus == Status.Equip)
+                    if (CurrentStatus == Status.Equip)
                         request = new HttpRequestMessage(HttpMethod.Get, $"{ApiEndPoint}/api/scanner/nextscanequip");
-                    else
+                    else if (CurrentStatus == Status.Rare)
                         request = new HttpRequestMessage(HttpMethod.Get, $"{ApiEndPoint}/api/scanner/nextscanitem");
-
+                    else
+                        continue;
                     request.Headers.Add("Accept", "application/json");
                     request.Headers.Add("User-Agent", "BorfRoScanner");
                     var response = client.SendAsync(request).Result;

@@ -50,6 +50,14 @@ namespace RomExchangeScanner
 
 
             List<int> indices = FindSearchResult("searchresult.png", scanInfo);
+            if(indices.Count == 1 && indices[0] == -1)
+            {
+                await android.Swipe(1100, 863, 1100, 355, 200);
+                await Task.Delay(500);
+                await android.Screenshot("searchresult.png");
+                indices = FindSearchResult("searchresult.png", scanInfo);
+            }
+
             await Task.Delay(500);
             if (indices.Count == 0)
             {

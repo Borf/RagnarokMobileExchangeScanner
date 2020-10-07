@@ -571,6 +571,13 @@ namespace RomExchangeScanner
                 }
             }
 
+        
+            if(resultIds.Count == 0 && results.Count == 10)
+            {
+                //could be on the next page
+                return new List<int>() { -1 };
+            }
+
             if(resultIds.Count == 0)
                 info.Message = $"Could not find item {itemName}, results were ({string.Join(", ", results)})";
             return resultIds;
