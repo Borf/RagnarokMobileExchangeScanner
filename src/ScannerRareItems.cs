@@ -48,6 +48,19 @@ namespace RomExchangeScanner
 
             for (int i = 0; i < indices.Count; i++)
             {
+                if (indices[i] < 0 || indices[i] >= SearchResultPositions.Length)
+                {
+                    if(indices[i] == -1)
+                    {
+                        return new ScanResultItem()
+                        {
+                            Found = false,
+                            ScanInfo = scanInfo
+                        };
+                    }
+                    scanInfo.Message = "Warning, search index out of bounds";
+                    return ScanResult.BuildError<ScanResultItem>(scanInfo);
+                }
                 await ClickSearchWindowIndex(android, indices[i]);
                 await Task.Delay(1500); // the UI needs some time to load the card
 

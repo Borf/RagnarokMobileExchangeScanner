@@ -299,6 +299,7 @@ namespace RomExchangeScanner
                     using (var image2 = Image.Load<Rgba32>(fileName))
                         image2.Clone(ctx => ctx.Crop(new Rectangle(383, 261, 553, 453))).Save($"enchant{i}.png");
                     string hasEnchant = GetTextFromImage($"enchant{i}.png");
+
                     Console.WriteLine($"- Text Read: \n\n{hasEnchant}\n\n");
                     if (hasEnchant.ToLower().Contains("refine ") && !foundRefine && !enchanted && hasEnchant.ToLower().IndexOf("refine ") != hasEnchant.ToLower().IndexOf("refine +6 effective"))
                     {
@@ -371,6 +372,13 @@ namespace RomExchangeScanner
                     {
                         Console.WriteLine("Scrolled wayyyyyy too far");
                         break;
+                    }
+                    try
+                    {
+                        File.Delete($"enchant{i}.png");
+                    }catch(UnauthorizedAccessException e)
+                    {
+                        Console.WriteLine($"Could not delete enchant{i}.png, {e}");
                     }
 
 

@@ -27,6 +27,7 @@ namespace RomExchangeScanner
 
         public static AndroidConnector androidConnection;
         public static Scanner scanner;
+        private static string hostname;
 
         public static LogWindow log { get; set; }
         public static StatusWindow status { get; set; }
@@ -34,7 +35,7 @@ namespace RomExchangeScanner
 
         static void Main(string[] args)
         {
-            string hostname = "10.10.0.32:1234";
+            hostname = "10.10.0.32:1234";
             if (args.Length > 0)
                 hostname = args[0];
 
@@ -115,17 +116,17 @@ namespace RomExchangeScanner
             int errorCount = 0;
             int majorErrorcount = 0;
 
-            {
+           /* {
                 ScanInfo scanInfo = new ScanInfo()
                 {
-                    RealName = "Clip",
-                    SearchName = "Clip",
+                    RealName = "Eye of Dullahan",
+                    SearchName = "Eye of Dullahan",
                     SearchIndex = -1,
                     Override = false
                 }; 
                 
                 List<ScanResultEquip> exchangeInfo = await scanner.ScanEquip(androidConnection, scanInfo);
-            }
+            }*/
 
 
             using (HttpClient client = new HttpClient())
@@ -206,7 +207,8 @@ namespace RomExchangeScanner
                             {
                                 data.id,
                                 error = error,
-                                results = exchangeInfo
+                                results = exchangeInfo,
+                                clientId = hostname
                             }), Encoding.UTF8, "application/json");
                             try
                             {
@@ -240,13 +242,16 @@ namespace RomExchangeScanner
                             }), Encoding.UTF8, "application/json");
 
                             response = await client.SendAsync(request);
-                            errorCount = 0;
-                            majorErrorcount = 0;
                             if (exchangeInfo.Error)
                             {
                                 errorCount++;
                                 Console.WriteLine("Error scanning card!");
                                 Console.WriteLine(exchangeInfo.ScanInfo.Message);
+                            }
+                            else
+                            {
+                                errorCount = 0;
+                                majorErrorcount = 0;
                             }
                         }
 
@@ -256,15 +261,15 @@ namespace RomExchangeScanner
 
                     if (errorCount > 10)
                     {
+                        Console.WriteLine("Got over 10 errors, increasing major errors...");
                         if (majorErrorcount > 2)
                         {
                             CurrentStatus = Status.Idle;
                         }
                         else
                         {
+                            Restart = true;
                             Console.WriteLine("Too many errors, restarting game");
-                            scanner.RestartRo(androidConnection).Wait();
-                            scanner.OpenExchange(androidConnection, 0).Wait();
                             majorErrorcount++;
                             errorCount = 0;
                         }
